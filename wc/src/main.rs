@@ -85,10 +85,12 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
         .fold(Count::new(&args), |cnt, line| {
             let chars = cnt.chars.map(|chars| {
                 chars
-                    + line
-                        .chars()
-                        .map(|c| if args.is_char { 1 } else { c.len_utf8() })
-                        .sum::<usize>()
+                    + 1
+                    + if args.is_char {
+                        line.chars().count()
+                    } else {
+                        line.len()
+                    }
             });
             let words = cnt.words.map(|words| {
                 words
@@ -106,7 +108,7 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
                         .0
             });
             Count {
-                chars: chars.map(|c| c + 1),
+                chars,
                 words,
                 lines: cnt.lines.map(|l| l + 1),
             }
@@ -115,7 +117,7 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
 
 fn print_count(cnt: &Count, name: Option<&str>) {
     if let Some(lines) = cnt.lines {
-        print!("{lines:7}");
+        print!(" {lines:7}");
     }
     if let Some(words) = cnt.words {
         print!(" {words:7}");
@@ -140,7 +142,13 @@ fn run() -> Result<(), Box<dyn Error>> {
             .files
             .iter()
             .map(fs::File::open)
-            .map_while(Result::ok)
+            .filter_map(|r| match r {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    None
+                }
+            })
             .map(io::BufReader::new)
             .fold(Count::new(&args), |total, br| {
                 total + {
