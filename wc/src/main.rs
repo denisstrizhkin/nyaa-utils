@@ -2,7 +2,7 @@ use clap::{ArgAction, Parser};
 use std::error::Error;
 use std::fs;
 use std::io;
-use std::ops::Add;
+use std::ops::{Add, ControlFlow};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -78,15 +78,13 @@ impl Add for Count {
     }
 }
 
-fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
-    reader
-        .lines()
-        .map_while(Result::ok)
-        .fold(Count::new(args), |cnt, line| {
+fn count<R: io::BufRead>(reader: R, init_cnt: Count, is_char: bool) -> Result<Count, io::Error> {
+    match reader.lines().try_fold(init_cnt, |cnt, line| match line {
+        Ok(line) => {
             let chars = cnt.chars.map(|chars| {
                 chars
                     + 1
-                    + if args.is_char {
+                    + if is_char {
                         line.chars().count()
                     } else {
                         line.len()
@@ -107,12 +105,17 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
                         })
                         .0
             });
-            Count {
+            ControlFlow::Continue(Count {
                 chars,
                 words,
                 lines: cnt.lines.map(|l| l + 1),
-            }
-        })
+            })
+        }
+        Err(e) => ControlFlow::Break(e),
+    }) {
+        ControlFlow::Continue(cnt) => Ok(cnt),
+        ControlFlow::Break(err) => Err(err),
+    }
 }
 
 fn print_count(cnt: &Count, name: Option<&str>) {
@@ -135,8 +138,10 @@ fn run() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     if args.files.is_empty() {
         let stdin = io::stdin().lock();
-        let count = count(stdin, &args);
-        print_count(&count, None);
+        match count(stdin, Count::new(&args), args.is_char) {
+            Ok(cnt) => print_count(&cnt, None),
+            Err(e) => eprintln!("{e}"),
+        }
     } else {
         let total = args
             .files
@@ -146,10 +151,13 @@ fn run() -> Result<(), Box<dyn Error>> {
                 let file = fs::File::open(p);
                 file.inspect_err(|e| eprintln!("{}: {}", name, e))
                     .ok()
-                    .map(|file| {
-                        let cnt = count(io::BufReader::new(file), &args);
-                        print_count(&cnt, Some(name.as_ref()));
-                        cnt
+                    .and_then(|file| {
+                        count(io::BufReader::new(file), Count::new(&args), args.is_char)
+                            .inspect_err(|e| eprintln!("{}: {}", name, e))
+                            .ok()
+                            .inspect(|cnt| {
+                                print_count(cnt, Some(name.as_ref()));
+                            })
                     })
             })
             .fold(Count::new(&args), Count::add);
