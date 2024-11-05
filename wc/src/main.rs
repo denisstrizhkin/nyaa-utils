@@ -82,7 +82,7 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
     reader
         .lines()
         .map_while(Result::ok)
-        .fold(Count::new(&args), |cnt, line| {
+        .fold(Count::new(args), |cnt, line| {
             let chars = cnt.chars.map(|chars| {
                 chars
                     + 1
@@ -141,22 +141,18 @@ fn run() -> Result<(), Box<dyn Error>> {
         let total = args
             .files
             .iter()
-            .map(fs::File::open)
-            .filter_map(|r| match r {
-                Ok(f) => Some(f),
-                Err(e) => {
-                    eprintln!("{}", e);
-                    None
-                }
+            .filter_map(|p| {
+                let name = p.to_string_lossy();
+                let file = fs::File::open(p);
+                file.inspect_err(|e| eprintln!("{}: {}", name, e))
+                    .ok()
+                    .map(|file| {
+                        let cnt = count(io::BufReader::new(file), &args);
+                        print_count(&cnt, Some(name.as_ref()));
+                        cnt
+                    })
             })
-            .map(io::BufReader::new)
-            .fold(Count::new(&args), |total, br| {
-                total + {
-                    let cnt = count(br, &args);
-                    print_count(&cnt, Some("name"));
-                    cnt
-                }
-            });
+            .fold(Count::new(&args), Count::add);
         if args.files.len() > 1 {
             print_count(&total, Some("total"));
         }
