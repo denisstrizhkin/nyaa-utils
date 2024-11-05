@@ -2,8 +2,8 @@ use clap::{ArgAction, Parser};
 use std::error::Error;
 use std::fs;
 use std::io;
-use std::ops::{Add, ControlFlow};
-use std::path::PathBuf;
+use std::ops::Add;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(version)]
@@ -38,6 +38,7 @@ struct Args {
     version: (),
 }
 
+#[derive(Clone, Copy)]
 struct Count {
     chars: Option<usize>,
     lines: Option<usize>,
@@ -78,8 +79,8 @@ impl Add for Count {
     }
 }
 
-fn count<R: io::BufRead>(reader: R, init_cnt: Count, is_char: bool) -> Result<Count, io::Error> {
-    match reader.lines().try_fold(init_cnt, |cnt, line| match line {
+fn count<R: io::BufRead>(reader: R, init_cnt: &Count, is_char: bool) -> Result<Count, io::Error> {
+    reader.lines().try_fold(*init_cnt, |cnt, line| match line {
         Ok(line) => {
             let chars = cnt.chars.map(|chars| {
                 chars
@@ -90,32 +91,17 @@ fn count<R: io::BufRead>(reader: R, init_cnt: Count, is_char: bool) -> Result<Co
                         line.len()
                     }
             });
-            let words = cnt.words.map(|words| {
-                words
-                    + line
-                        .chars()
-                        .fold((0, false), |(words, is_word), c| {
-                            if c.is_whitespace() {
-                                (words, false)
-                            } else if !is_word {
-                                (words + 1, true)
-                            } else {
-                                (words, is_word)
-                            }
-                        })
-                        .0
-            });
-            ControlFlow::Continue(Count {
+            let words = cnt
+                .words
+                .map(|words| words + line.split_whitespace().count());
+            Ok(Count {
                 chars,
                 words,
                 lines: cnt.lines.map(|l| l + 1),
             })
         }
-        Err(e) => ControlFlow::Break(e),
-    }) {
-        ControlFlow::Continue(cnt) => Ok(cnt),
-        ControlFlow::Break(err) => Err(err),
-    }
+        Err(e) => Err(e),
+    })
 }
 
 fn print_count(cnt: &Count, name: Option<&str>) {
@@ -134,41 +120,48 @@ fn print_count(cnt: &Count, name: Option<&str>) {
     println!();
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-    if args.files.is_empty() {
-        let stdin = io::stdin().lock();
-        match count(stdin, Count::new(&args), args.is_char) {
-            Ok(cnt) => print_count(&cnt, None),
-            Err(e) => eprintln!("{e}"),
-        }
-    } else {
-        let total = args
-            .files
-            .iter()
-            .filter_map(|p| {
-                let name = p.to_string_lossy();
-                let file = fs::File::open(p);
-                file.inspect_err(|e| eprintln!("{}: {}", name, e))
-                    .ok()
-                    .and_then(|file| {
-                        count(io::BufReader::new(file), Count::new(&args), args.is_char)
-                            .inspect_err(|e| eprintln!("{}: {}", name, e))
-                            .ok()
-                            .inspect(|cnt| {
-                                print_count(cnt, Some(name.as_ref()));
-                            })
-                    })
+enum Input<'a> {
+    Stdin(io::Stdin),
+    File(&'a Path),
+}
+
+fn process_inputs(inputs: &[Input], args: &Args) {
+    let cnt = Count::new(args);
+    let total = inputs
+        .iter()
+        .filter_map(|input| {
+            let (cnt, name) = match input {
+                Input::Stdin(stdin) => (count(stdin.lock(), &cnt, args.is_char), None),
+                Input::File(path) => (
+                    fs::File::open(path)
+                        .and_then(|file| count(io::BufReader::new(file), &cnt, args.is_char)),
+                    Some(path.to_string_lossy()),
+                ),
+            };
+            cnt.inspect_err(|e| {
+                name.as_ref().inspect(|name| eprint!("{name}: "));
+                eprintln!("{e}");
             })
-            .fold(Count::new(&args), Count::add);
-        if args.files.len() > 1 {
-            print_count(&total, Some("total"));
-        }
+            .ok()
+            .inspect(|cnt| print_count(cnt, name.as_deref()))
+        })
+        .fold(cnt, Count::add);
+    if inputs.len() > 1 {
+        print_count(&total, Some("total"));
     }
-    Ok(())
+}
+
+fn run() {
+    let args = Args::parse();
+    let inputs: Vec<Input> = if args.files.is_empty() {
+        vec![Input::Stdin(io::stdin())]
+    } else {
+        args.files.iter().map(|p| Input::File(p)).collect()
+    };
+    process_inputs(&inputs, &args);
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    run()?;
+    run();
     Ok(())
 }
