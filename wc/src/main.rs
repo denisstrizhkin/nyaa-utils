@@ -1,6 +1,5 @@
 use clap::{ArgAction, Parser};
 use std::error::Error;
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 
@@ -10,30 +9,30 @@ use std::path::PathBuf;
 #[command(about = "word, line, and byte or character count", long_about = None)]
 #[command(disable_help_flag = true, disable_version_flag = true)]
 struct Args {
-    #[arg(short = 'm', default_value_t = false)]
+    #[arg(short = 'm')]
     #[arg(help = "Write to the stdout the number of characters in each input file")]
     is_count_char: bool,
 
-    #[arg(short = 'c', default_value_t = false)]
+    #[arg(short = 'c')]
     #[arg(help = "Write to the stdout the number of bytes in each input file")]
     is_count_byte: bool,
 
-    #[arg(short = 'l', default_value_t = false)]
+    #[arg(short = 'l')]
     #[arg(help = "Write to the stdout the number of <newline> characters in each input file")]
     is_count_line: bool,
 
-    #[arg(short = 'w', default_value_t = false)]
+    #[arg(short = 'w')]
     #[arg(help = "Write to the stdout the number of words in each input file")]
     is_count_word: bool,
 
     #[arg(help = "Input files")]
     files: Vec<PathBuf>,
 
-    #[arg(long, action=ArgAction::Help, help="Print help", default_value_t=false)]
-    help: bool,
+    #[arg(long, action=ArgAction::Help, help="Print help")]
+    help: (),
 
-    #[arg(long, action=ArgAction::Version, help="Print version", default_value_t=false)]
-    version: bool,
+    #[arg(long, action=ArgAction::Version, help="Print version")]
+    version: (),
 }
 
 #[derive(Default)]
@@ -91,17 +90,18 @@ fn count<R: io::BufRead>(reader: R, args: &Args) -> Count {
 
 fn print_count(cnt: &Count, name: Option<&str>) {
     if let Some(lines) = cnt.lines {
-        println!("{lines:7}");
+        print!("{lines:7}");
     }
     if let Some(words) = cnt.words {
-        println!(" {words:7}");
+        print!(" {words:7}");
     }
     if let Some(chars) = cnt.chars {
-        println!(" {chars:7}");
+        print!(" {chars:7}");
     }
     if let Some(name) = name {
-        println!(" {name}");
+        print!(" {name}");
     }
+    println!();
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
