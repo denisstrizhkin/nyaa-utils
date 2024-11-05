@@ -4,34 +4,35 @@ use std::io;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "wc")]
-#[command(version)]
+#[command(name = "wc", version)]
 #[command(about = "word, line, and byte or character count", long_about = None)]
 #[command(disable_help_flag = true, disable_version_flag = true)]
 struct Args {
+    /// Write to the stdout the number of characters in each input file
     #[arg(short = 'm')]
-    #[arg(help = "Write to the stdout the number of characters in each input file")]
     is_count_char: bool,
 
+    /// Write to the stdout the number of bytes in each input file
     #[arg(short = 'c')]
-    #[arg(help = "Write to the stdout the number of bytes in each input file")]
     is_count_byte: bool,
 
+    /// Write to the stdout the number of <newline> characters in each input file
     #[arg(short = 'l')]
-    #[arg(help = "Write to the stdout the number of <newline> characters in each input file")]
     is_count_line: bool,
 
+    /// Write to the stdout the number of words in each input file
     #[arg(short = 'w')]
-    #[arg(help = "Write to the stdout the number of words in each input file")]
     is_count_word: bool,
 
-    #[arg(help = "Input files")]
+    /// Input files
     files: Vec<PathBuf>,
 
-    #[arg(long, action=ArgAction::Help, help="Print help")]
+    /// Print help
+    #[arg(long, action=ArgAction::Help)]
     help: (),
 
-    #[arg(long, action=ArgAction::Version, help="Print version")]
+    /// Print version
+    #[arg(long, action=ArgAction::Version)]
     version: (),
 }
 
